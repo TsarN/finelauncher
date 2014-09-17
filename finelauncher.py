@@ -64,6 +64,7 @@ except:
 class AppStore:
     def __init__(self, mainbox, launcher):
         self.window = launcher.window
+        self.window.set_skip_taskbar_hint(True)
         self.mainbox = mainbox
         self.cur_page = 1
         self.cur_category = "ALL"
