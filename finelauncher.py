@@ -65,6 +65,7 @@ class AppStore:
     def __init__(self, mainbox, launcher):
         self.window = launcher.window
         self.window.set_skip_taskbar_hint(True)
+        self.window.stick()
         self.mainbox = mainbox
         self.cur_page = 1
         self.cur_category = "ALL"
@@ -441,7 +442,7 @@ class MyLauncher:
          # Start pyGTK setup
         self.window = gtk.Window()
         self.window.set_title("fineLauncher")
-        # self.window.set_keep_above(True)
+        self.window.set_keep_above(True)
         self.window.add_events(gtk.gdk.BUTTON_PRESS_MASK)
 
         self.window.connect("destroy", self.quit)
