@@ -14,8 +14,10 @@ pygtk.require('2.0')
 
 # checking for already running process
 
-if os.path.isfile('fineLauncher_lock'):
-    fineLauncher_lock_file = open("fineLauncher_lock", "r")
+home_dir = os.path.expanduser('~')
+
+if os.path.isfile(home_dir+'/.fineLauncher_lock'):
+    fineLauncher_lock_file = open(home_dir+"/.fineLauncher_lock", "r")
     pid = int(fineLauncher_lock_file.readline())
     do_exit = True
     try:
@@ -23,12 +25,12 @@ if os.path.isfile('fineLauncher_lock'):
     except:
         # some error
         do_exit = False
-    os.remove('fineLauncher_lock')
+    os.remove(home_dir+'/.fineLauncher_lock')
     fineLauncher_lock_file.close()
     if do_exit:
         exit()
 
-fineLauncher_lock_file = open("fineLauncher_lock", "w")
+fineLauncher_lock_file = open(home_dir+"/.fineLauncher_lock", "w")
 fineLauncher_lock_file.write(str(os.getpid()) + "\n")
 fineLauncher_lock_file.close()
 
@@ -61,15 +63,36 @@ except:
     print "PIL missing, install python-imaging"
     sys.exit()
 
+def export_favor():
+    favors = open(home_dir+"/.fineLauncherFavor", "w")
+    favors.write(str(favorite) + "\n")
+    favors.close()
+    print "Favorites exported"
+
+favorite = set()
+
+def import_favor():
+    global favorite
+    if os.path.isfile(home_dir+"/.fineLauncherFavor"):
+        favors = open(home_dir+"/.fineLauncherFavor", "r")
+        favorite = eval(favors.readline())
+        print "Favorites imported: ", favorite
+    else:
+        favorite = set()
+        export_favor()
+        print "Favorites imported as empty"
+
+import_favor()
+
 class AppStore:
     def __init__(self, mainbox, launcher):
         self.window = launcher.window
         self.window.set_skip_taskbar_hint(True)
+        self.window.connect("key-press-event", self.on_keypress)
         self.window.stick()
         self.mainbox = mainbox
         self.cur_page = 1
         self.cur_category = "ALL"
-        self.favorite = ["Chromium", "Minecraft", "Firefox"]
         # Get Menu
         menu = MenuCache(AUTO_UPDATE=False)
         self.appsmenu = menu.getMenu()
@@ -109,6 +132,17 @@ class AppStore:
         self.window.add(mainbox)
         self.window.maximize() # HOT FIX
 
+    def on_keypress(self, widget, event):
+        if gtk.gdk.keyval_name(event.keyval) == "Right":
+            if self.cur_page <= self.max_pages:
+                self.cur_page += 1
+                self.navigate_page(None, None, self.apps, self.cur_page)
+        if gtk.gdk.keyval_name(event.keyval) == "Left":
+            if self.cur_page > 1:
+                self.cur_page -= 1
+                self.navigate_page(None, None, self.apps, self.cur_page)
+        return
+
     #load apps
     def load(self, id_category):
         self.buttonContainer_size_w = self.buttonsContainer.get_allocation().width
@@ -125,6 +159,8 @@ class AppStore:
         self.run_command(self.getResults(self.search.get_text())[0]['command'])
 
     def activate_search(self, widget=None, event=None, data=None):
+       if gtk.gdk.keyval_name(event.keyval) in ["Right", "Left"]:
+           return 
        if not self.search.get_editable():
           self.search.set_text("")
           self.search.set_editable(True)
@@ -138,7 +174,8 @@ class AppStore:
             print "No result"
 
     def add_toolbar(self, widget, categories, launcher):
-        toolbar_container = gtk.HBox(False)
+        toolbar_container = gtk.VBox(False)
+
         # create toolbar
         toolbar = gtk.HBox(False)
         toolbar.set_border_width(5)
@@ -157,14 +194,14 @@ class AppStore:
         button.connect("clicked", self.activate_category, "ALL")
         toolbar.pack_start(button, False, False, 5)
         
-        #button = gtk.Button("Favorite")
-        #button.set_relief(gtk.RELIEF_NONE)
-        #button.child.modify_fg(gtk.STATE_NORMAL, gtk.gdk.color_parse("white"))
-        #button.set_focus_on_click(False)
-        #button.set_border_width(0)
-        #button.set_property('can-focus', False)
-        #button.connect("clicked", self.activate_category, "FAVOR")
-        #toolbar.pack_start(button, False, False, 5)
+        button = gtk.Button("Favorite")
+        button.set_relief(gtk.RELIEF_NONE)
+        button.child.modify_fg(gtk.STATE_NORMAL, gtk.gdk.color_parse("white"))
+        button.set_focus_on_click(False)
+        button.set_border_width(0)
+        button.set_property('can-focus', False)
+        button.connect("clicked", self.activate_category, "FAVOR")
+        toolbar.pack_start(button, False, False, 5)
         for category in categories:
            button = gtk.Button(category['label'])
            button.set_relief(gtk.RELIEF_NONE)
@@ -195,6 +232,7 @@ class AppStore:
     
     # closing the window from the WM
     def destroy(self, widget=None, event=None):
+        export_favor()
         gtk.main_quit()
         return False
         
@@ -222,7 +260,8 @@ class AppStore:
 
     def paginate(self, lista):
         nPages = (len(lista) / (self.maxcolums * self.maxrows))
-        #print "pages: " + str(nPages)
+        self.apps = lista
+        self.max_pages = nPages
         paginationbox = gtk.HBox()
         footer = gtk.HBox()
         if nPages > 1:
@@ -234,14 +273,14 @@ class AppStore:
                 button.set_focus_on_click(False)
                 button.set_border_width(0)
                 button.set_property('can-focus', True)
-                button.connect("clicked", self.navigate_page, lista, i)
-                paginationbox.pack_start(button, False , False, 5)
+                button.connect("button-press-event", self.navigate_page, lista, i)
+                paginationbox.pack_start(button, False, False, 5)
                 button.set_label(str(i))
             paginationbox.pack_start(gtk.Label("            Page: " + str(self.cur_page)), False, False, 5)
         footer.pack_start(gtk.HBox())
-        footer.pack_start(paginationbox, False , False, 5)
+        footer.pack_start(paginationbox, False, False, 5)
         footer.pack_start(gtk.HBox())
-        self.buttonsContainer.pack_end(footer, False , False, 5)
+        self.buttonsContainer.pack_end(footer, False, False, 5)
 
     def fill_buttonsContainer(self, lista, Page=1):
         self.paginate(lista)
@@ -266,10 +305,8 @@ class AppStore:
         """ Add a button to the panel """
         box = gtk.VBox(False)
 
-        image = gtk.Image()
         button = gtk.Button()
         button.set_relief(gtk.RELIEF_NONE)
-        gtk.RELIEF_NORMAL
         button.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse("white"))
         button.set_focus_on_click(False)
         button.set_border_width(0)
@@ -280,7 +317,7 @@ class AppStore:
         button.set_size_request(ICON_SIZE+BUTTON_PADDING, ICON_SIZE+BUTTON_PADDING)
         button.show()
         box.pack_start(button, False, False, BUTTON_PADDING)
-        button.connect("clicked", self.click_button, item)
+        button.connect("button-press-event", self.click_button, item)
         button.connect("focus-in-event", self.in_focus)
         button.connect("focus-out-event", self.out_focus)
         labelString = item['label']
@@ -302,8 +339,15 @@ class AppStore:
 	
         row.pack_start(box, False, False, COL_PADDING)
 
-    def click_button(self, widget, command):
-        self.run_command(command['command'])
+    def click_button(self, widget, event, command):
+        if event.button == 1:
+            self.run_command(command['command'])
+        if event.button == 3:
+            if command['label'] in favorite:
+                favorite.discard(command['label'])
+                self.activate_category(None, "FAVOR")
+            else:
+                favorite.add(command['label'])
 
     def in_focus(self, widget, event):
         widget.set_relief(gtk.RELIEF_NORMAL)
@@ -316,16 +360,17 @@ class AppStore:
         self.cur_category = category_id
         self.load(category_id)
 
-    def navigate_page(self, widget, apps, page):
-        self.cur_page = page
-        self.buttonContainer_size_w = self.buttonsContainer.get_allocation().width
-        self.buttonContainer_size_h = self.buttonsContainer.get_allocation().height
-        if self.buttonsContainer.get_children():
-           for widget in self.buttonsContainer.get_children():
-              self.buttonsContainer.remove(widget)
-           self.buttonsContainer.set_size_request(self.buttonContainer_size_w, self.buttonContainer_size_h) 
-        self.fill_buttonsContainer(apps, Page=page)   
-        self.buttonsContainer.show_all()
+    def navigate_page(self, widget, event, apps, page):
+        if (event is None) or (event.button == 1):
+            self.cur_page = page
+            self.buttonContainer_size_w = self.buttonsContainer.get_allocation().width
+            self.buttonContainer_size_h = self.buttonsContainer.get_allocation().height
+            if self.buttonsContainer.get_children():
+               for widget in self.buttonsContainer.get_children():
+                  self.buttonsContainer.remove(widget)
+               self.buttonsContainer.set_size_request(self.buttonContainer_size_w, self.buttonContainer_size_h) 
+            self.fill_buttonsContainer(apps, Page=page) 
+            self.buttonsContainer.show_all()
 
     def showResults(self, results):
         self.buttonContainer_size_w = self.buttonsContainer.get_allocation().width
@@ -353,7 +398,7 @@ class AppStore:
              apps.append({'label': item.attrib["label"], 'icon': item.attrib["icon"], 'command': item.find(".//command").text})
        elif Category == "FAVOR":
           for item in root.xpath("/xdg-menu/menu[@id]/item"):
-              if item.attrib["label"] in self.favorite:
+              if item.attrib["label"] in favorite:
                 apps.append({'label': item.attrib["label"], 'icon': item.attrib["icon"],
                     'command': item.find(".//command").text})
        else:
@@ -372,7 +417,7 @@ class AppStore:
        root = etree.parse(self.appsmenu)
        results = []
        for item in root.xpath("/xdg-menu/menu[@id]/item[contains(@label, '" + search + "') or contains(@id, '" + search + "') or contains(.//command, '" + search + "')]"):
-           #if (self.cur_category != "FAVOR") or (item.attrib["label"] in self.favorite):
+           #if (self.cur_category != "FAVOR") or (item.attrib["label"] in favorite):
               results.append({'label': item.attrib["label"], 'icon': item.attrib["icon"], 'command': item.find(".//command").text})
        return results
     
@@ -388,7 +433,8 @@ class MyLauncher:
         self.init_window()
 
     def quit(self, widget=None, data=None):
-        os.remove('fineLauncher_lock')
+        export_favor()
+        os.remove(home_dir+'/.fineLauncher_lock')
         gtk.main_quit()
 
     def on_keypress(self, widget=None, event=None, data=None):
